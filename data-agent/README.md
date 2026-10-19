@@ -12,6 +12,10 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-9cf)
 ![Vue](https://img.shields.io/badge/Vue-3.5-brightgreen)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ed)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D)
+![Qdrant](https://img.shields.io/badge/Qdrant-vector--db-9E4DE0)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
