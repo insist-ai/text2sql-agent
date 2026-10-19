@@ -59,7 +59,7 @@ cd data-agent/docker
 cp .env.example .env && docker compose up -d --build
 ```
 
-浏览器打开 **http://localhost:8080**（API 文档 http://localhost:8000/docs）。
+浏览器打开 http://localhost:8080（API 文档 http://localhost:8000/docs）。
 TEI 在 CPU 下加载模型约需 5~6 分钟，属正常现象。
 
 ## 目录
