@@ -1,0 +1,66 @@
+# Few-Shot 示例库：真实业务问题 → SQL 范式
+# 生成 SQL 时按问题相似度挑选 top_k 注入提示词，仅作写法参考；
+# 模型必须以本次召回的数据表信息为准，不得照搬示例中不存在于本次上下文的字段。
+# 文件缺失或 examples 为空时自动降级（不影响主流程）。
+#
+# ⚠️ 2026-10-15 修订（评测公平性）：旧示例中有 5 条与 evaluation/golden_set.jsonl
+#    语义高度近似（前5客户↔q016、品类销量↔q017、华东销售额↔q010、
+#    男女订单占比↔q027、省份销售总额↔q009/q041），会导致消融实验中
+#    「开启 few-shot」组的增益混有「示例检索命中近似原题」的成分（答案泄漏）。
+#    现统一替换为与评测集**无语义重合**的问法，仅保留 SQL 写法的范式价值。
+examples:
+  - question: 统计每个大区的客户数量
+    sql: |
+      SELECT dr.region_name, COUNT(DISTINCT fo.customer_id) AS customer_count
+      FROM fact_order fo
+      JOIN dim_region dr ON fo.region_id = dr.region_id
+      GROUP BY dr.region_name
+      ORDER BY customer_count DESC
+    note: 大区维度分组 + 去重计数；表别名 fo=fact_order, dr=dim_region
+
+  - question: 按商品品牌统计各自的销售额
+    sql: |
+      SELECT dp.brand, SUM(fo.order_amount) AS sales_total
+      FROM fact_order fo
+      JOIN dim_product dp ON fo.product_id = dp.product_id
+      GROUP BY dp.brand
+      ORDER BY sales_total DESC
+    note: 品牌维度分组，对订单金额求和
+
+  - question: 销量排名前3的商品名称是哪些
+    sql: |
+      SELECT dp.product_name, SUM(fo.order_quantity) AS quantity_total
+      FROM fact_order fo
+      JOIN dim_product dp ON fo.product_id = dp.product_id
+      GROUP BY dp.product_id, dp.product_name
+      ORDER BY quantity_total DESC
+      LIMIT 3
+    note: 商品名称(非品类)维度 Top-N；GROUP BY 需同时含 id 与 name
+
+  - question: 统计每个会员等级的平均订单金额
+    sql: |
+      SELECT dc.member_level, AVG(fo.order_amount) AS avg_amount
+      FROM fact_order fo
+      JOIN dim_customer dc ON fo.customer_id = dc.customer_id
+      GROUP BY dc.member_level
+      ORDER BY avg_amount DESC
+    note: 会员等级分组后对金额求均值，注意 AVG 与 SUM 的口径差异
+
+  - question: 统计每件商品的平均销量
+    sql: |
+      SELECT dp.product_name, AVG(fo.order_quantity) AS avg_quantity
+      FROM fact_order fo
+      JOIN dim_product dp ON fo.product_id = dp.product_id
+      GROUP BY dp.product_id, dp.product_name
+      ORDER BY avg_quantity DESC
+    note: 销量对应 order_quantity（件数），销售额才对应 order_amount，二者不可混用
+
+  - question: 统计每个客户购买过多少个不同品类
+    sql: |
+      SELECT dc.customer_name, COUNT(DISTINCT dp.category) AS category_count
+      FROM fact_order fo
+      JOIN dim_customer dc ON fo.customer_id = dc.customer_id
+      JOIN dim_product dp ON fo.product_id = dp.product_id
+      GROUP BY dc.customer_id, dc.customer_name
+      ORDER BY category_count DESC
+    note: 三表关联 + COUNT(DISTINCT) 去重统计，考察多表 JOIN 与去重计数

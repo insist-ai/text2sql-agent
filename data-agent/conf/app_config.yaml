@@ -1,0 +1,158 @@
+logging:
+  file:
+    enable: true
+    level: INFO
+    path: logs
+    rotation: "10 MB"
+    retention: "7 days"
+  console:
+    enable: true
+    level: INFO
+
+# 连接类配置统一支持环境变量覆盖：默认值即本地直连时的取值，行为与改造前完全一致。
+# 容器化部署时在 docker-compose 里注入 DB_HOST=mysql 等即可，无需改动本文件。
+# 注意容器内端口与宿主机映射端口不同（见 docker/docker-compose.yaml）：
+#   mysql 容器 3306（宿主 3307）、embedding 容器 80（宿主 8081），其余与宿主一致。
+db_meta:
+  host: ${oc.env:DB_HOST,localhost}
+  port: ${oc.env:DB_PORT,3307}
+  user: ${oc.env:DB_USER,atguigu}
+  password: ${oc.env:DB_PASSWORD,please-set-env-DB_PASSWORD}
+  database: meta
+
+db_dw:
+  host: ${oc.env:DB_HOST,localhost}
+  port: ${oc.env:DB_PORT,3307}
+  user: ${oc.env:DB_USER,atguigu}
+  password: ${oc.env:DB_PASSWORD,please-set-env-DB_PASSWORD}
+  database: dw
+
+db_app:
+  host: ${oc.env:DB_HOST,localhost}
+  port: ${oc.env:DB_PORT,3307}
+  user: ${oc.env:DB_USER,atguigu}
+  password: ${oc.env:DB_PASSWORD,please-set-env-DB_PASSWORD}
+  database: app_db
+
+qdrant:
+  host: ${oc.env:QDRANT_HOST,localhost}
+  port: ${oc.env:QDRANT_PORT,6333}
+  embedding_size: 1024
+
+embedding:
+  host: ${oc.env:EMBEDDING_HOST,localhost}
+  port: ${oc.env:EMBEDDING_PORT,8081}
+  model: models/bge-large-zh-v1.5
+
+es:
+  host: ${oc.env:ES_HOST,localhost}
+  port: ${oc.env:ES_PORT,9200}
+  index_name: data_agent
+
+# Agent 召回与融合参数
+agent:
+  rrf_enable: true  # 召回融合开关：true=RRF 融合；false=两路并集去重后截断 Top-N（消融实验 baseline 用，Step23）
+  rrf_k: 60        # RRF 常数 k：score = Σ 1/(k + rank)，越大各名次分数差异越平缓
+  recall_top_k: 20 # 每路召回(向量/关键词)参与 RRF 融合的 Top-K 截断；调大是为了扩大参与融合的名次跨度、让 RRF 的 k 真正影响排序（元数据规模小时名次挤在头部，k 无法拉开差距），同时提升召回覆盖
+  es_min_score: 1.5 # 字段/指标关键词路 ES 相关性下限；0 表示不过滤
+  qdrant_min_score: 0.6 # 向量路(字段/指标/取值)Qdrant 相似度下限；0 表示不过滤(不向 query_points 传 score_threshold)
+  fuse_top_n: 10   # RRF 融合后每类(字段/指标/取值)保留的 Top-N（调参扫描固定此值观察 k 的影响）
+  max_retries: 3   # SQL 自省闭环：最大纠错重试次数
+
+# SQL 安全网关（执行前校验 + 仓储层兜底）
+sql_guard:
+  default_limit: 1000        # 无 LIMIT 时自动追加
+  max_rows: 1000             # 返回行数硬上限
+  max_result_bytes: 5242880  # 结果集大小硬上限(5MB)
+  execution_timeout_ms: 10000 # 单条 SQL 执行超时(10s)
+  blocked_keywords: [INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, GRANT, REPLACE, CALL, MERGE, REVOKE, LOAD, HANDLER, RENAME, SHUTDOWN, KILL, PREPARE, EXECUTE, FLUSH, PURGE, LOCK, UNLOCK]
+  blocked_functions: [SLEEP, BENCHMARK, LOAD_FILE, GET_LOCK, RELEASE_LOCK]
+  blocked_schemas: [information_schema, mysql, performance_schema, sys]
+
+# Self-Consistency（SQL 生成自洽投票，默认关闭，关闭时与单次生成行为完全一致）
+self_consistency:
+  enable: false       # 总开关
+  n_samples: 3        # 并行采样候选数
+  temperature: 0.7    # 采样温度（高于基线 0，以产生多样化候选）
+  max_concurrency: 3  # 并发 LLM 调用上限
+
+# SQL 生成上下文增强（指标口径注入 + Few-shot 示例，均可独立开关，便于消融）
+context_enhance:
+  metric_spec:
+    enable: true        # 命中指标时结构化注入口径定义/关联字段
+    max_chars: 800
+  few_shot:
+    enable: true        # 按问题相似度注入 top_k 示例
+    top_k: 3
+    max_chars: 1600
+    examples_file: conf/few_shot_examples.yaml
+  metric_spec_min_score: 0.2   # 指标口径注入的相关性门槛（0 表示不过滤）
+  few_shot_min_score: 0.2      # few-shot 相似度门槛（0 退化为原先的 s>0 行为）
+  table_infos_max_chars: 2400  # 原始召回明细预算（优先级最低）
+  total_max_chars: 4500        # 三段总预算，超长按 口径 > few-shot > 召回明细 裁剪
+
+llm:
+  # ============================================================
+  # 当前通道：公益网关 api.hcnsec.cn（免费备用通道，2026-10-13 启用）
+  #   模型实测记录（2026-10-15 复测，网关模型池会变动，以实测为准）：
+  #     sensenova-6.8-flash-lite  —— 2~4s，质量达标；2026-10-15 起网关下架(503 model_not_found)，不可用
+  #     longcat-2.5               —— 25~63s/条，4/4 连续两轮全通过，稳定性最好（当前采用）
+  #     Qwen3.8-Flash-Next        —— 单次调用 2.4s，但长 prompt 下 4 条样本 3 条无 SQL，不可用
+  #     DeepSeek-V4-Flash         —— 单次调用 28s，4 条样本 2 条无 SQL，抖动大
+  #     MiMo-V2.6-Flash / Qwen3.8-27B —— 单次调用快，未做长 prompt 稳定性验证
+  #     step-5-preview            —— 15~73s，慢且抖动大
+  #     auto                      —— 不建议：路由目标会漂移，评测结果不可复现
+  # ------------------------------------------------------------
+  # 切回 DeepSeek 官方（通道B）时：
+  #   1) base_url 改为 https://api.deepseek.com/v1
+  #   2) model_name / model_name_code 改为 deepseek-flash
+  #   3) .env 中把 LLM_API_KEY 换成 DEEPSEEK_LLM_API_KEY 的值
+  # ============================================================
+  model_name: ${oc.env:LLM_MODEL_NAME,DeepSeek-V4-Flash}
+  # 纠错等代码任务专用模型，与通用模型解耦；先与主链路保持一致。
+  model_name_code: ${oc.env:LLM_MODEL_NAME_CODE,DeepSeek-V4-Flash}
+  api_key: ${oc.env:LLM_API_KEY,please-set-env-LLM_API_KEY}
+  base_url: ${oc.env:LLM_BASE_URL,https://api.hcnsec.cn/v1}
+  # 单次请求超时(秒)：第三方网关可能间歇性挂死（不返回/不报错），不设超时会导致整个请求永久卡死。
+  # 取 90s：longcat-2.5 在长 prompt（表结构+口径+few-shot）下实测 25~63s/条，30s 会大量超时；
+  # 切回 DeepSeek 官方（通道B）建议改回 60。设为 0 或负数表示不限制。
+  request_timeout: 90
+  # 超时 / 连接错误 / 5xx 时的自动重试次数（由 OpenAI SDK 执行，指数退避）。
+  # 公益网关随机挂死，重试是有效的（3 次全挂概率约 6%）；官方通道可降回 2。
+  max_retries: 3
+
+# 限流：业务接口按「用户 + 接口」，认证入口按「IP(+用户名)」的内存滑动窗口（Step 18）
+# 说明：当前为单机内存实现，多副本部署各自计数、进程重启即清零；生产环境可替换为 Redis。
+rate_limit:
+  enable: true        # 总开关：false 时完全放行，便于本地调试
+  window_seconds: 60  # 滑动窗口长度(秒)，即"每分钟"，业务与认证入口共用
+  max_requests: 10    # 业务接口：单窗口内单用户对单接口的最大请求数
+  # 认证入口专用额度（登录/注册时尚无 token，只能按 IP 计数，故额度更严）
+  auth:
+    login_max_requests: 5     # 登录：每分钟单 IP(+用户名) 最多 5 次，防密码爆破
+    register_max_requests: 3  # 注册：每分钟单 IP 最多 3 次，防批量刷号
+
+# Redis 连接（查询缓存优先使用的后端；不可用时双向自动降级为进程内缓存）
+redis:
+  host: ${oc.env:REDIS_HOST,localhost}
+  port: ${oc.env:REDIS_PORT,6379}
+  db: 0
+  password: ${oc.env:REDIS_PASSWORD,''}  # 未设置环境变量则为空(无鉴权)；生产通过 REDIS_PASSWORD 注入
+  socket_timeout: 2.0                  # 连接/读写超时(秒)，避免 Redis 挂死拖垮查询
+
+# 查询缓存：对「同一问题 + 同一数据范围」的重复查询直接回放结果，跳过 LangGraph 全流程（Step 19）
+# 说明：优先 Redis，不可用时自动降级为进程内 TTL 缓存；仅缓存无历史上下文的单轮问题。
+query_cache:
+  enable: true         # 总开关：false 时完全关闭缓存（不走缓存读写）
+  ttl_seconds: 3600    # 缓存有效期(秒)，默认 1 小时
+  key_prefix: "qcache:" # 键前缀，便于按前缀清除/区分命名空间
+  max_entries: 1024    # 内存降级实现的最大条目数（超出按最早过期淘汰）
+
+# JWT 配置
+# 注意：secret_key 请勿在此硬编码真实密钥，生产环境通过环境变量 APP_JWT_SECRET_KEY 注入；
+#       此处仅作占位，未设置环境变量时使用该占位值（仅供本地开发/自测）。
+jwt:
+  secret_key: ${oc.env:APP_JWT_SECRET_KEY,please-set-env-APP_JWT_SECRET_KEY}
+  algorithm: HS256
+  access_token_expire_minutes: 15      # access token 有效期 15 分钟
+  refresh_token_expire_minutes: 10080  # refresh token 有效期 7 天(7*24*60)

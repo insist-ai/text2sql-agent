@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv
+
+# 本地私密配置与密钥（务必忽略）
+.env
+.env.*
+!.env.example
+conf/*.local.yaml
+conf/app_config.local.yaml
+
+# docker 本地私密配置
+docker/.env
+!docker/.env.example
+

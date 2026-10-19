@@ -1,0 +1,25 @@
+# 构建上下文瘦身：不把这些打进镜像
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.git/
+.gitignore
+
+# 日志与运行产物
+logs/
+*.log
+backups/
+
+# 评测数据（仅开发/论文用，不进运行镜像）
+evaluation/
+
+# 本地私密配置
+.env
+.env.*
+!.env.example
+conf/*.local.yaml
+
+# 文档（镜像内不需要）
+docs/

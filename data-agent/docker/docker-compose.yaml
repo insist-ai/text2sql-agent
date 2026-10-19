@@ -1,0 +1,200 @@
+# ==========================================================
+#  全栈编排
+#   依赖服务：mysql / elasticsearch / kibana / qdrant / redis / embedding(TEI)
+#   应用服务：backend(FastAPI) / backend-init(一次性初始化) / frontend(nginx)
+#
+#   启动：cd docker && cp .env.example .env（填好密钥）&& docker compose up -d
+#   访问：http://localhost:8080
+# ==========================================================
+
+# 后端公共环境变量：backend 与 backend-init 共用，避免两处重复维护
+x-backend-env: &backend-env
+  # 容器内按服务名访问（不是 localhost），端口用容器内部端口
+  DB_HOST: mysql
+  DB_PORT: 3306
+  DB_USER: ${MYSQL_USER:-atguigu}
+  DB_PASSWORD: ${MYSQL_PASSWORD}
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: 6333
+  ES_HOST: elasticsearch
+  ES_PORT: 9200
+  EMBEDDING_HOST: embedding
+  EMBEDDING_PORT: 80          # TEI 容器内部监听 80（宿主映射 8081）
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  # LLM 通道可覆盖（非密钥，给默认值）；切 DeepSeek 官方时改 docker/.env 即可，无需重建镜像
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.hcnsec.cn/v1}
+  LLM_MODEL_NAME: ${LLM_MODEL_NAME:-longcat-2.5}
+  LLM_MODEL_NAME_CODE: ${LLM_MODEL_NAME_CODE:-longcat-2.5}
+  # 密钥（LLM_API_KEY / APP_JWT_SECRET_KEY）一律由 env_file 从 ../.env 注入，
+  # 刻意不写在这里：environment 优先级高于 env_file，若此处留空值反而会覆盖掉真实密钥。
+
+x-backend-build: &backend-build
+  context: ..
+  dockerfile: Dockerfile
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER:-atguigu}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d
+    command:
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+    healthcheck:
+      # 初始化脚本执行完、服务可接受连接后才算健康
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  elasticsearch:
+    build: ./elasticsearch
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  kibana:
+    image: kibana:8.19.10
+    container_name: kibana
+    restart: unless-stopped
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  qdrant:
+    image: qdrant/qdrant:v1.16
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # HTTP
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    # 说明：该镜像内没有 curl/wget，无法做 HTTP 健康检查；
+    # 就绪探测改由 backend-init 的 wait_for_deps 做 TCP 探活兜底。
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    container_name: embedding
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      MODEL_ID: /models/bge-large-zh-v1.5
+      MAX_CONCURRENT_REQUESTS: "16"
+      MAX_BATCH_TOKENS: "16384"
+      HF_ENDPOINT: https://hf-mirror.com
+    volumes:
+      # 模型权重不入库（约 1.3GB），需按部署文档从 hf-mirror 下载后放到此目录
+      - ./embedding/bge-large-zh-v1.5:/models/bge-large-zh-v1.5
+    healthcheck:
+      # CPU 模式下加载 1.3GB 的 bge-large-zh-v1.5 并 warmup 实测需 5~6 分钟，
+      # 因此 start_period 与 retries 都要给足，否则会被误判为 unhealthy
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+
+  # ---------- 一次性初始化：等依赖 → 建业务表 → 构建元数据知识库 ----------
+  backend-init:
+    build: *backend-build
+    container_name: backend-init
+    # wait_for_deps 超时给 600s：Embedding(TEI) 在 CPU 模式加载大模型最慢，实测约 6 分钟
+    # 必须用 `python -m` 而非 `python 路径`：后者会把脚本所在目录(而非 /app)加入 sys.path，导致 import app 失败
+    command: >
+      sh -c "python -m app.scripts.wait_for_deps 600 &&
+             python -m app.scripts.init_app_db &&
+             python -m app.scripts.build_meta_knowledge -c conf/meta_config.yaml"
+    environment: *backend-env
+    env_file:
+      - ../.env          # LLM_API_KEY / APP_JWT_SECRET_KEY 等密钥（该文件已被 .gitignore 排除）
+    volumes:
+      - ../logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      embedding:
+        condition: service_healthy
+    restart: "no"
+
+  # ---------- 后端 API ----------
+  backend:
+    build: *backend-build
+    container_name: backend
+    restart: unless-stopped
+    environment: *backend-env
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../logs:/app/logs
+    depends_on:
+      backend-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # ---------- 前端（nginx 托管静态资源 + 反代 /api）----------
+  frontend:
+    build:
+      context: ../../data-agent-fronted
+      dockerfile: Dockerfile
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  es_data:
+  qdrant_data:
+  redis_data:
