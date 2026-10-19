@@ -8,6 +8,9 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-9cf)
 ![Vue](https://img.shields.io/badge/Vue-3.5-brightgreen)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ed)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+![系统总览](docs/assets/social-preview.png)
 
 ---
 
@@ -67,7 +70,7 @@ TEI 在 CPU 下加载模型约需 5~6 分钟，属正常现象。
 ```
 data-agent/          后端：FastAPI + LangGraph（README 含完整说明）
 data-agent-fronted/  前端：Vue3 + Element Plus + ECharts
-docs/                架构说明、部署指南、简历与毕设写作素材
+docs/                架构说明与部署指南
 ```
 
 ## 文档
@@ -77,6 +80,10 @@ docs/                架构说明、部署指南、简历与毕设写作素材
 | [`data-agent/README.md`](data-agent/README.md) | **主文档**：能力清单、架构图、评测与消融数据、复现步骤 |
 | [`docs/architecture.md`](docs/architecture.md) | 架构详解：13 节点、自省闭环、拒答机制、SSE 协议、设计权衡 |
 | [`docs/deployment.md`](docs/deployment.md) | Docker 部署、启动顺序、常见问题 |
+
+## License
+
+[MIT](LICENSE)
 
 ---
 
