@@ -371,8 +371,6 @@ python scripts/recheck_ex.py
 | [`docs/architecture.md`](../docs/architecture.md) | 架构详解：数据流、SSE 协议、各模块设计权衡 |
 | [`docs/deployment.md`](../docs/deployment.md) | 容器化部署、启动顺序、常见问题、验收记录 |
 | [`docs/LLM通道切换指南.md`](docs/LLM通道切换指南.md) | 免费网关 ⇄ DeepSeek 官方切换步骤 |
-| [`docs/resume-snippets.md`](../docs/resume-snippets.md) | 简历写法与面试追问定位 |
-| [`docs/thesis-outline.md`](../docs/thesis-outline.md) | 毕业设计论文提纲与实验章节写法 |
 | [`evaluation/schema.md`](evaluation/schema.md) | 评测集标注规范（新增样例前必读） |
 
 ---
