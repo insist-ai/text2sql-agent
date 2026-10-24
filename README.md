@@ -1,7 +1,7 @@
 # NL2SQL 智能问数系统
 
 > 用中文口语提问，自动生成 SQL、在数据仓库上执行并给出答案的 **Text-to-SQL 智能体**。
-> 后端 FastAPI + LangGraph 13 节点状态图，前端 Vue3，全栈 Docker Compose 一键启动。
+> 后端 FastAPI + LangGraph 14 节点状态图，前端 Vue3，全栈 Docker Compose 一键启动。
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.138-green)
@@ -81,7 +81,7 @@ docs/                架构说明与部署指南
 | 文档 | 内容 |
 |---|---|
 | [`data-agent/README.md`](data-agent/README.md) | **主文档**：能力清单、架构图、评测与消融数据、复现步骤 |
-| [`docs/architecture.md`](docs/architecture.md) | 架构详解：13 节点、自省闭环、拒答机制、SSE 协议、设计权衡 |
+| [`docs/architecture.md`](docs/architecture.md) | 架构详解：14 节点、自省闭环、拒答机制、SSE 协议、设计权衡 |
 | [`docs/deployment.md`](docs/deployment.md) | Docker 部署、启动顺序、常见问题 |
 
 ## License

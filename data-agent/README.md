@@ -5,7 +5,7 @@
 > 面向电商经营场景的 **Text-to-SQL 智能问数系统**：用中文口语提问，系统自动完成
 > **多轮改写 → 混合召回 → SQL 生成 → 安全校验 → 自省纠错 → 执行返回**，全程 SSE 流式可见。
 >
-> 后端 FastAPI + LangGraph 13 节点状态图，前端 Vue3 + Element Plus，全栈 Docker Compose 一键启动。
+> 后端 FastAPI + LangGraph 14 节点状态图，前端 Vue3 + Element Plus，全栈 Docker Compose 一键启动。
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.138-green)
@@ -48,7 +48,7 @@ BI 看板做不到的，是"临时起意的一句追问"。本项目把这类追
 
 ## 二、已完成能力清单
 
-### Agent 链路（LangGraph 13 节点）
+### Agent 链路（LangGraph 14 节点）
 
 - **多轮查询改写**：携带历史上下文消解指代/省略，"那华南呢"自动补全为完整问题
 - **关键词抽取**：jieba 按词性过滤（名词 / 地名 / 动词 / 形容词等）抽取检索关键词，**零 LLM 调用、零延迟**
@@ -98,7 +98,7 @@ flowchart TB
         QR["POST /api/query<br/>SSE text-event-stream"]
     end
 
-    subgraph AG["Agent · LangGraph 13 节点"]
+    subgraph AG["Agent · LangGraph 14 节点"]
         RW["rewrite_query<br/>多轮改写"]
         REJ{{"拒答分支<br/>NO_ANSWER"}}
         RECALL["双路召回<br/>向量 + 关键词 → RRF"]
@@ -131,7 +131,7 @@ flowchart TB
     RUN --> MYSQL
 ```
 
-### 3.2 LangGraph 状态图（13 节点，`rewrite_query` 为 START）
+### 3.2 LangGraph 状态图（14 节点，`rewrite_query` 为 START）
 
 ```mermaid
 flowchart TD
@@ -169,7 +169,7 @@ flowchart TD
 | 层 | 选型 |
 |---|---|
 | 后端框架 | FastAPI（异步全链路）、Pydantic、Uvicorn |
-| Agent 编排 | **LangGraph** StateGraph（13 节点 + 4 组条件边） |
+| Agent 编排 | **LangGraph** StateGraph（14 节点 + 4 组条件边） |
 | LLM 接入 | LangChain `ChatOpenAI`（兼容 OpenAI 协议，统一接线超时与重试） |
 | ORM / 数据库 | SQLAlchemy 2.0 异步 + **asyncmy**（MySQL 驱动） |
 | 向量检索 | Qdrant + **AsyncQdrantClient** |
@@ -319,7 +319,7 @@ data-agent/
 ├── main.py                      # FastAPI 入口（中间件、路由、异常处理器注册）
 ├── app/
 │   ├── agent/                   # ★ Agent 核心
-│   │   ├── graph.py             #    LangGraph 13 节点装配 + 条件路由（拒答分支）
+│   │   ├── graph.py             #    LangGraph 14 节点装配 + 条件路由（拒答分支）
 │   │   ├── state.py             #    状态定义
 │   │   ├── llm.py               #    LLM 实例（llm / llm_code / llm_sc）+ 超时重试接线
 │   │   ├── context_enhancer.py  #    指标口径 + few-shot 注入（分档字符预算）

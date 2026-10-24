@@ -34,7 +34,7 @@ flowchart TB
     end
 
     subgraph L4["Agent 层 · LangGraph"]
-        GRAPH["13 节点状态图<br/>含自省闭环与拒答分支"]
+        GRAPH["14 节点状态图<br/>含自省闭环与拒答分支"]
     end
 
     subgraph L5["检索与存储"]
@@ -64,7 +64,7 @@ flowchart TB
 
 ---
 
-## 二、Agent 状态图：13 节点逐一看
+## 二、Agent 状态图：14 节点逐一看
 
 状态图入口 `app/agent/graph.py`，节点实现 `app/agent/nodes/`。**`rewrite_query` 是 START**——
 先把"人话"补全成"可独立理解的问题"，再谈检索与生成。
@@ -86,7 +86,9 @@ flowchart TB
 | 13 | `correct_sql` | 带报错信息重写 SQL | 是 | 用 `llm_code`（与主模型解耦），带 `error_history` |
 | 14 | `run_sql` | 在 dw 库执行并下发结果 | 否 | 执行受 `sql_guard` 的超时/行数/字节限制 |
 
-> 注：上表 14 行是因为 `run_sql` 单独计数；图中节点为 13 个（`correct_sql` 与 `run_sql` 属闭环回路）。
+> 注：上表 14 项与 `graph.py` 中 `add_node` 的 14 次调用一一对应。
+> 其中 `validate_sql → correct_sql → validate_sql` 构成自省回路，`run_sql` 报错同样回退到 `correct_sql`，
+> 因此节点虽只有 14 个，实际执行路径会因重试次数不同而变化（4 组条件边）。
 
 ### 2.1 自省纠错闭环
 
